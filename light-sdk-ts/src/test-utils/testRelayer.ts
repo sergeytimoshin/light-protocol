@@ -39,13 +39,16 @@ export class TestRelayer extends Relayer {
     }
   }
 
-  async sendTransaction(instruction: any, provider: Provider): Promise<any> {
+  async sendTransaction(instructions: any[], provider: Provider): Promise<any> {
     try {
       if (!provider.provider) throw new Error("no provider set");
-      const response = await sendVersionedTransaction(instruction, provider);
+      let response = "failed to send instruction";
+      for (let instruction of instructions) {
+        response = await sendVersionedTransaction(instruction, provider);
+      }
       return response;
     } catch (err) {
-      console.error("erorr here =========>", { err });
+      console.error("error here =========>", { err });
       throw err;
     }
   }

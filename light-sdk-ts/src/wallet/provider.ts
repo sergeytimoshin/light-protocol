@@ -140,10 +140,11 @@ export class Provider {
     return mockProvider;
   }
 
+  // TODO: move this to the relayer class
   private async fetchLookupTable() {
     try {
       if (!this.wallet.isNodeWallet) {
-        const response = await axios.get("http://localhost:3331/lookuptable");
+        const response = await axios.get(`${this.relayer.url}/lookuptable`);
         const lookUpTable = new PublicKey(response.data.data);
         this.lookUpTable = lookUpTable;
         this.relayer.accounts.lookUpTable = lookUpTable;
@@ -166,7 +167,7 @@ export class Provider {
   ) {
     try {
       if (!this.wallet.isNodeWallet) {
-        const response = await axios.get("http://localhost:3331/merkletree");
+        const response = await axios.get(`${this.relayer.url}/merkletree`);
 
         const fetchedMerkleTree: MerkleTree = response.data.data.merkleTree;
 

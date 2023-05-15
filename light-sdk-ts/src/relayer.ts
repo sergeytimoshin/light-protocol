@@ -18,7 +18,7 @@ export class Relayer {
   relayerFee: BN;
   highRelayerFee: BN;
   indexedTransactions: IndexedTransaction[] = [];
-
+  url: string;
   /**
    *
    * @param relayerPubkey Signs the transaction
@@ -32,7 +32,9 @@ export class Relayer {
     relayerRecipientSol?: PublicKey,
     relayerFee: BN = new BN(0),
     highRelayerFee: BN = new BN(TOKEN_ACCOUNT_FEE),
+    url = "http://localhost:3331",
   ) {
+    this.url = url;
     if (!relayerPubkey) {
       throw new RelayerError(
         RelayerErrorCode.RELAYER_PUBKEY_UNDEFINED,
@@ -76,9 +78,7 @@ export class Relayer {
 
   async updateMerkleTree(provider: Provider) {
     try {
-      const response = await axios.post(
-        "http://localhost:3331/updatemerkletree",
-      );
+      const response = await axios.post(`${this.url}/updatemerkletree`);
       return response;
     } catch (err) {
       console.error({ err });
@@ -88,12 +88,9 @@ export class Relayer {
 
   async sendTransaction(instruction: any, provider: Provider): Promise<any> {
     try {
-      const response = await axios.post(
-        "http://localhost:3331/relayInstruction",
-        {
-          instruction,
-        },
-      );
+      const response = await axios.post(`${this.url}/relayInstruction`, {
+        instruction,
+      });
       return response.data.data;
     } catch (err) {
       console.error({ err });
@@ -109,9 +106,7 @@ export class Relayer {
     connection: Connection,
   ): Promise<IndexedTransaction[]> {
     try {
-      const response = await axios.get(
-        "http://localhost:3331/indexedTransactions",
-      );
+      const response = await axios.get(`${this.url}/indexedTransactions`);
 
       const indexedTransactions: IndexedTransaction[] = response.data.data.map(
         (trx: IndexedTransaction) => {

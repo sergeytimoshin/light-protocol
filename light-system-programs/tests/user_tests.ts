@@ -62,7 +62,7 @@ describe("Test User", () => {
       2_000_000_000,
     );
 
-    RELAYER = await new TestRelayer(
+    RELAYER = new TestRelayer(
       userKeypair.publicKey,
       LOOK_UP_TABLE,
       relayerRecipientSol,

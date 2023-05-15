@@ -4,11 +4,11 @@ import { port } from "./config";
 import { addCorsHeaders } from "./middleware";
 import bodyParser from "body-parser";
 import {
-  indexedTransactions,
+  getIndexedTransactions,
   initMerkleTree,
   initLookupTable,
-  sendTransaction,
   updateMerkleTree,
+  handleRelay,
 } from "./services";
 require("dotenv").config();
 
@@ -23,15 +23,14 @@ app.get("/merkletree", initMerkleTree);
 
 app.get("/lookuptable", initLookupTable);
 
-app.post("/relayInstruction", sendTransaction);
+app.post("/relayInstructions", handleRelay);
 
-app.get("/indexedTransactions", indexedTransactions);
+app.get("/indexedTransactions", getIndexedTransactions);
 
 app.listen(port, async () => {
   if (process.env.TEST_ENVIROMENT) {
     await testSetup();
   }
-
   console.log(`Webserver started on port ${port}`);
   console.log("rpc:", process.env.RPC_URL);
 });

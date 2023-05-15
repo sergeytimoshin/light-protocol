@@ -741,6 +741,7 @@ export class User {
     let ataCreationFee = false;
 
     if (!tokenCtx.isNative && publicAmountSpl) {
+      // TODO: add test: pass non-existing ATA to unshield
       let tokenBalance = await this.provider.connection?.getTokenAccountBalance(
         recipientSpl,
       );

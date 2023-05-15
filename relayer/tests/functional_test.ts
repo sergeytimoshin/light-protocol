@@ -319,4 +319,8 @@ describe("API tests", () => {
         done();
       });
   });
+
+  // test for: relayInstructions (mock job),handleRelay(mock request)
+  // test for : indexdb 1 round, searchbw, searchfw, mergeAndSort
+  // adapt endpoints to fit the client/testrelayer again
 });
