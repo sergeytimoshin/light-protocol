@@ -349,10 +349,40 @@ async function getTransactionsBatch({
     batchOptions,
     "confirmed",
   );
-  const lastSignature = signatures[signatures.length - 1];
+  console.log("zkjs: signatures", signatures.length);
+
+  // get the signature with the highest blocktime
+  const oldestSignature = signatures.reduce((a, b) =>
+    a.blockTime! < b.blockTime! ? a : b,
+  );
+
+  // console.log(
+  //   "zkjs: oldest signature",
+  //   new Date(firstSignature.blockTime! * 1000).toLocaleString() +
+  //     " " +
+  //     firstSignature.signature,
+  // );
+  console.log(
+    "zkjs: oldestSignature",
+    new Date(oldestSignature.blockTime! * 1000).toLocaleString() +
+      " " +
+      oldestSignature.signature,
+  );
+
+  // print most recent sig
+  const mostRecentSignature = signatures.reduce((a, b) =>
+    a.blockTime! > b.blockTime! ? a : b,
+  );
+  console.log(
+    "zkjs: mostRecentSignature",
+    new Date(mostRecentSignature.blockTime! * 1000).toLocaleString() +
+      " " +
+      mostRecentSignature.signature,
+  );
+
   let txs: (ParsedTransactionWithMeta | null)[] = [];
   let index = 0;
-  const signaturesPerRequest = 5;
+  const signaturesPerRequest = 10;
 
   while (index < signatures.length) {
     try {
@@ -365,13 +395,17 @@ async function getTransactionsBatch({
           commitment: "confirmed",
         },
       );
+      console.log("zkjs: fetched transactions", txsBatch.length);
 
       if (!txsBatch.some((t) => !t)) {
         txs = txs.concat(txsBatch);
         index += signaturesPerRequest;
+        console.log("zkjs: updated index", index);
+        console.log("accumulated txs", txs.length);
       }
     } catch (e) {
-      await sleep(2000);
+      console.log("zkjs: error fetching transactions", e);
+      await sleep(1000);
     }
   }
 
@@ -389,12 +423,14 @@ async function getTransactionsBatch({
       return txs;
     }
   });
+  console.log("zkjs: transactionEvents", transactionEvents.length);
 
   const parsedTransactionEvents = parseTransactionEvents(transactionEvents);
   parsedTransactionEvents.forEach((event) => {
     enrichParsedTransactionEvents(event!, transactions);
   });
-  return lastSignature;
+
+  return oldestSignature;
 }
 
 /**
@@ -424,10 +460,12 @@ export async function fetchRecentTransactions({
   const rounds = Math.ceil(batchOptions.limit! / batchSize);
 
   let batchBefore = batchOptions.before;
+  console.log("zkjs: rounds", rounds);
 
   for (let i = 0; i < rounds; i++) {
     const batchLimit =
       i === rounds - 1 ? batchOptions.limit! - i * batchSize : batchSize;
+    console.log(`zkjs: batchLimit for round ${i}`, batchLimit);
     const lastSignature = await getTransactionsBatch({
       connection,
       merkleTreeProgramId,
@@ -438,13 +476,20 @@ export async function fetchRecentTransactions({
       },
       transactions,
     });
+    console.log(`zkjs: lastSignature for round ${i}`, lastSignature);
     if (!lastSignature) {
+      console.log(`zkjs: breaking at round ${i} due to no lastSignature`);
       break;
     }
 
     batchBefore = lastSignature.signature;
+    console.log(`zkjs: batchBefore for round ${i + 1}`, batchBefore);
     await sleep(500);
   }
+  console.log(
+    "@fetchRecentTransactions new transactions found",
+    transactions.length,
+  );
   return transactions.sort(
     (a, b) =>
       new BN(a.firstLeafIndex, "hex").toNumber() -

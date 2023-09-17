@@ -28,6 +28,7 @@ export async function runIndexer(rounds: number = 0) {
       job,
       connection,
     });
+
     if (rounds !== 0) {
       laps++;
     }

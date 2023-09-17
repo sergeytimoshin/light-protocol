@@ -38,16 +38,37 @@ export async function indexTransactions({
       job,
       connection,
     );
-
+    console.log("older");
+    console.table(
+      olderTransactions.map((t) => ({
+        Signature: t.signature,
+        BlockTime: new Date(t.blockTime).toLocaleString(),
+      })),
+    );
     const newerTransactions: IndexedTransaction[] = await searchForward(
       job,
       connection,
+    );
+    console.log("newer");
+    console.table(
+      newerTransactions.map((t) => ({
+        Signature: t.signature,
+        BlockTime: new Date(t.blockTime).toLocaleString(),
+      })),
+    );
+    console.log("existing");
+    console.table(
+      job.data.transactions.map((t: any) => ({
+        Signature: t.signature,
+        BlockTime: new Date(t.blockTime).toLocaleString(),
+      })),
     );
 
     let dedupedTransactions: IndexedTransaction[] = mergeAndSortTransactions(
       job.data.transactions,
       [olderTransactions, newerTransactions],
     );
+
     console.log(
       `new total: ${dedupedTransactions.length} transactions old: ${job.data.transactions.length}, older: ${olderTransactions.length}, newer: ${newerTransactions.length}`,
     );
@@ -56,7 +77,22 @@ export async function indexTransactions({
       dedupedTransactions,
       MIN_INDEXER_SLOT,
     );
-
+    console.log("filtered...", filteredByDeploymentVersion.length);
+    console.log(
+      "Most recent transaction: ",
+      filteredByDeploymentVersion[0].signature,
+      new Date(filteredByDeploymentVersion[0].blockTime).toLocaleString(),
+    );
+    console.log(
+      "Oldest transaction: ",
+      filteredByDeploymentVersion[filteredByDeploymentVersion.length - 1]
+        .signature,
+      new Date(
+        filteredByDeploymentVersion[
+          filteredByDeploymentVersion.length - 1
+        ].blockTime,
+      ).toLocaleString(),
+    );
     await job.updateData({
       transactions: filteredByDeploymentVersion,
       lastFetched: Date.now(),

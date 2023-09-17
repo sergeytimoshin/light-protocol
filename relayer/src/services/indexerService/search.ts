@@ -38,7 +38,10 @@ export async function searchBackward(job: Job, connection: Connection) {
       (a: IndexedTransaction, b: IndexedTransaction) =>
         a.blockTime < b.blockTime ? a : b,
     );
-
+    console.log(
+      "oldestTransaction",
+      new Date(oldestTransaction.blockTime).toLocaleString(),
+    );
     let olderTransactions: IndexedTransaction[] = await fetchRecentTransactions(
       {
         connection,
