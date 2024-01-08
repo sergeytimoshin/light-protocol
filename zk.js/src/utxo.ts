@@ -43,6 +43,7 @@ export type OutUtxo = {
   isFillingUtxo: boolean;
   utxoDataHash: BN;
   utxoData?: any;
+  isPublic: boolean;
 };
 
 export function createFillingOutUtxo({
@@ -137,6 +138,7 @@ export function createOutUtxo({
     verifierAddressCircuit: utxoHashInputs.verifierAddressCircuit,
     utxoDataHash,
     utxoData,
+    isPublic: false, // TODO: add check to determine whether utxo is public or encrypted
   };
   return outUtxo;
 }
@@ -509,6 +511,7 @@ export type Utxo = {
   utxoDataHash: string;
   utxoData: any;
   utxoName: string;
+  isPublic: boolean;
 };
 
 export type NullifierInputs = {
@@ -550,6 +553,7 @@ export function createFillingUtxo({
   );
 }
 
+/** Tries to decrypt and return Utxo from bytes, returns null otherwise */
 export async function decryptUtxo(
   encBytes: Uint8Array,
   account: Account,
@@ -587,6 +591,7 @@ export async function decryptUtxo(
   );
 }
 
+/** Adds merkleproof and leafindex to OutUtxo to turn it into a Utxo */
 export function outUtxoToUtxo(
   outUtxo: OutUtxo,
   merkleProof: string[],
@@ -651,6 +656,7 @@ export function createTestInUtxo({
   );
 }
 
+/** Creates Utxo from inputs */
 export function createUtxo(
   lightWasm: LightWasm,
   account: Account,
@@ -669,12 +675,14 @@ export function createUtxo(
     utxoData,
     utxoName,
   } = createUtxoInputs;
+
+  /// Filling UTXO with 0 amounts and SystemProgram as asset
   while (assets.length < 2) {
     assets.push(SystemProgram.programId);
     amounts.push(BN_0);
   }
 
-  const utxoNameInternal = utxoName ? utxoName : "native";
+  const utxoNameInternal = utxoName ?? "native";
   const poolType = "0";
   const transactionVersion = "0";
   const merkleTreeLeafIndexInternal = isFillingUtxo ? 0 : merkleTreeLeafIndex;
@@ -739,10 +747,12 @@ export function createUtxo(
     utxoDataHash,
     utxoName: utxoNameInternal,
     utxoData,
+    isPublic: false, // TODO: add check to determine whether utxo is public or encrypted
   };
   return utxo;
 }
 
+/** derives Utxo nullifier hash from inputs  */
 export function getNullifier(
   lightWasm: LightWasm,
   inputs: NullifierInputs,
