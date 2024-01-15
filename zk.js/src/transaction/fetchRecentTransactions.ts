@@ -252,6 +252,7 @@ async function enrichParsedTransactionEvents(
     : changeSolAmount;
   const IDs = getIdsFromEncryptedUtxos(
     Buffer.from(encryptedUtxos),
+    // FIX: this is unused
     leaves.length,
   );
   transactions.push({

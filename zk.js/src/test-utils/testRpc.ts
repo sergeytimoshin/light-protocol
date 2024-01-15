@@ -302,7 +302,8 @@ export const createRpcIndexedTransactionResponse = (
 
 export const getIdsFromEncryptedUtxos = (
   encryptedUtxos: Buffer,
-  numberOfLeaves: number,
+  // TODO: use this!
+  _numberOfLeaves: number,
 ): string[] => {
   const utxoLength = 124; //encryptedUtxos.length / numberOfLeaves;
   // divide encrypted utxos by multiples of 2
