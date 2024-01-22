@@ -183,7 +183,7 @@ export const createPspProofInputs = (
       inUtxosInputs[`${camelCase(utxoName)}AmountSpl`] =
         utxo.amounts.length === 2 ? utxo.amounts[1] : BN_0;
       inUtxosInputs[`${camelCase(utxoName)}AssetSpl`] = utxo.assetsCircuit[1];
-      inUtxosInputs[`${camelCase(utxoName)}PublicKey`] = utxo.publicKey;
+      inUtxosInputs[`${camelCase(utxoName)}PublicKey`] = utxo.owner;
       inUtxosInputs[`${camelCase(utxoName)}PoolType`] = utxo.poolType;
       inUtxosInputs[`${camelCase(utxoName)}PspOwner`] =
         utxo.verifierAddressCircuit;
@@ -280,7 +280,7 @@ export function createSystemProofInputs({
     assetPubkeys: transaction.private.assetPubkeysCircuit,
     outAmount: transaction.private.outputUtxos?.map((x) => x.amounts),
     outBlinding: transaction.private.outputUtxos?.map((x) => x.blinding),
-    outPubkey: transaction.private.outputUtxos?.map((x) => x.publicKey),
+    outPubkey: transaction.private.outputUtxos?.map((x) => x.owner),
     inIndices: getIndices3D(
       transaction.private.inputUtxos[0].assets.length,
       N_ASSET_PUBKEYS,
@@ -307,21 +307,6 @@ export function createSystemProofInputs({
   return proofInput;
 }
 
-export function getTransactionMint(transaction: Transaction) {
-  if (transaction.public.publicAmountSpl.eq(BN_0)) {
-    return BN_0;
-  } else if (transaction.private.assetPubkeysCircuit) {
-    return transaction.private.assetPubkeysCircuit[1];
-  } else {
-    throw new TransactionError(
-      TransactionErrorCode.GET_MINT_FAILED,
-      "getMint",
-      "Failed to retrieve mint. The transaction parameters should contain 'assetPubkeysCircuit' after initialization, but it's missing.",
-    );
-  }
-}
-
-// TODO: implement privacy preserving fetching, this fetching strategy is not priaacy preserving for the rpc
 export async function syncInputUtxosMerkleProofs({
   inputUtxos,
   rpc,
@@ -549,13 +534,13 @@ export function addFillingOutUtxos(
   utxos: OutUtxo[] = [],
   len: number,
   lightWasm: LightWasm,
-  publicKey: BN,
+  owner: BN,
 ): OutUtxo[] {
   while (utxos.length < len) {
     utxos.push(
       createFillingOutUtxo({
         lightWasm,
-        publicKey,
+        owner,
       }),
     );
   }

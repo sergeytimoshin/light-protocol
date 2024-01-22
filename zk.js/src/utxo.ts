@@ -29,7 +29,7 @@ export const newNonce = () => nacl.randomBytes(nacl.box.nonceLength);
 export const randomPrefixBytes = () => nacl.randomBytes(UTXO_PREFIX_LENGTH);
 
 export type OutUtxo = {
-  publicKey: string;
+  owner: string;
   encryptionPublicKey?: Uint8Array; // is only set if the utxo should be sent to another public key and thus be encrypted asymetrically
   amounts: BN[];
   assets: PublicKey[];
@@ -47,13 +47,13 @@ export type OutUtxo = {
 
 export function createFillingOutUtxo({
   lightWasm,
-  publicKey,
+  owner,
 }: {
   lightWasm: LightWasm;
-  publicKey: BN;
+  owner: BN;
 }): OutUtxo {
   return createOutUtxo({
-    publicKey,
+    owner,
     amounts: [BN_0],
     assets: [SystemProgram.programId],
     isFillingUtxo: true,
@@ -62,7 +62,7 @@ export function createFillingOutUtxo({
 }
 
 export function createOutUtxo({
-  publicKey,
+  owner,
   encryptionPublicKey,
   amounts,
   assets,
@@ -72,7 +72,7 @@ export function createOutUtxo({
   verifierAddress = SystemProgram.programId,
   utxoData,
 }: {
-  publicKey: BN;
+  owner: BN;
   encryptionPublicKey?: Uint8Array;
   amounts: BN[];
   assets: PublicKey[];
@@ -105,7 +105,7 @@ export function createOutUtxo({
     : BN_0;
 
   const utxoHashInputs: UtxoHashInputs = {
-    publicKey: publicKey.toString(),
+    owner: owner.toString(),
     amounts: amounts.map((amount) => amount.toString()),
     assetsCircuit: assets.map((asset, index) => {
       if (
@@ -123,7 +123,7 @@ export function createOutUtxo({
   };
   const utxoHash = getUtxoHash(lightWasm, utxoHashInputs);
   const outUtxo: OutUtxo = {
-    publicKey: utxoHashInputs.publicKey,
+    owner: utxoHashInputs.owner,
     encryptionPublicKey,
     amounts,
     assets,
@@ -142,7 +142,7 @@ export function createOutUtxo({
 }
 
 type UtxoHashInputs = {
-  publicKey: string;
+  owner: string;
   amounts: string[];
   assetsCircuit: string[];
   blinding: string;
@@ -157,7 +157,7 @@ export function getUtxoHash(
   utxoHashInputs: UtxoHashInputs,
 ): string {
   const {
-    publicKey,
+    owner,
     amounts,
     assetsCircuit,
     blinding,
@@ -171,7 +171,7 @@ export function getUtxoHash(
     assetsCircuit.map((x) => x.toString()),
   );
 
-  if (!publicKey) {
+  if (!owner) {
     throw new UtxoError(
       CreateUtxoErrorCode.ACCOUNT_UNDEFINED,
       "getCommitment",
@@ -182,7 +182,7 @@ export function getUtxoHash(
   return lightWasm.poseidonHashString([
     transactionVersion,
     amountHash,
-    publicKey.toString(),
+    owner.toString(),
     blinding.toString(),
     assetHash.toString(),
     utxoDataHash.toString(),
@@ -202,7 +202,7 @@ export async function outUtxoToBytes(
 ): Promise<Uint8Array> {
   const serializeObject = {
     ...outUtxo,
-    accountCompressionPublicKey: new BN(outUtxo.publicKey),
+    accountCompressionPublicKey: new BN(outUtxo.owner),
     accountEncryptionPublicKey: outUtxo.encryptionPublicKey
       ? outUtxo.encryptionPublicKey
       : new Uint8Array(32).fill(0),
@@ -265,7 +265,7 @@ export function outUtxoFromBytes({
     SystemProgram.programId,
     fetchAssetByIdLookUp(decodedUtxoData.splAssetIndex, assetLookupTable),
   ];
-  const publicKey = compressed
+  const owner = compressed
     ? account?.keypair.publicKey
     : decodedUtxoData.accountCompressionPublicKey;
   // TODO: evaluate whether there is a better way to handle the case of a compressed program utxo which currently not deserialized correctly when taken from encrypted utxos
@@ -273,7 +273,7 @@ export function outUtxoFromBytes({
     return null;
   }
   const outUtxo = createOutUtxo({
-    publicKey: new BN(publicKey),
+    owner: new BN(owner),
     encryptionPublicKey: new BN(decodedUtxoData.accountEncryptionPublicKey).eq(
       BN_0,
     )
@@ -341,7 +341,7 @@ export async function encryptOutUtxo({
     account,
     merkleTreePdaPublicKey,
     compressed,
-    publicKey: utxo.publicKey,
+    owner: utxo.owner,
     encryptionPublicKey: utxo.encryptionPublicKey,
   });
   return encryptedUtxo;
@@ -355,7 +355,7 @@ export async function encryptOutUtxoInternal({
   compressed = false,
   isFillingUtxo = false,
   encryptionPublicKey,
-  publicKey,
+  owner,
   utxoHash,
 }: {
   bytes: Uint8Array;
@@ -365,7 +365,7 @@ export async function encryptOutUtxoInternal({
   compressed?: boolean;
   isFillingUtxo?: boolean;
   encryptionPublicKey?: Uint8Array;
-  publicKey: string;
+  owner: string;
   utxoHash: Uint8Array;
 }): Promise<Uint8Array> {
   if (encryptionPublicKey) {
@@ -539,7 +539,7 @@ export function createFillingUtxo({
 }): Utxo {
   const outFillingUtxo = createFillingOutUtxo({
     lightWasm,
-    publicKey: account.keypair.publicKey,
+    owner: account.keypair.publicKey,
   });
   return outUtxoToUtxo(
     outFillingUtxo,
@@ -633,7 +633,7 @@ export function createTestInUtxo({
   merkleTreeLeafIndex?: number;
 }): Utxo {
   const outUtxo = createOutUtxo({
-    publicKey: account.keypair.publicKey,
+    owner: account.keypair.publicKey,
     encryptionPublicKey,
     amounts,
     assets,
