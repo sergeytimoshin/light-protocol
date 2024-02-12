@@ -4,6 +4,8 @@ use light_concurrent_merkle_tree::{
     changelog::ChangelogEntry, errors::ConcurrentMerkleTreeError, ConcurrentMerkleTree,
 };
 use light_hasher::{Hasher, Keccak, Poseidon, Sha256};
+use light_merkle_tree_event::ChangelogEventV1;
+use light_merkle_tree_reference::store::Store;
 use rand::thread_rng;
 
 /// Tests whether append operations work as expected.
@@ -621,6 +623,97 @@ where
     }
 }
 
+/// Checks whether `append_batch` is compatible with equivalent multiple
+/// appends.
+fn compat_batch<H, const HEIGHT: usize>()
+where
+    H: Hasher,
+{
+    // const HEIGHT: usize = 4;
+    const CHANGELOG: usize = 64;
+    const ROOTS: usize = 256;
+
+    let mut rng = thread_rng();
+    let mut seq = 1;
+
+    for batch_size in 2..(1 << HEIGHT) {
+        // Tree to which we are going to batch append.
+        let mut concurrent_mt_1 = ConcurrentMerkleTree::<H, HEIGHT, CHANGELOG, ROOTS>::default();
+        concurrent_mt_1.init().unwrap();
+
+        // Tree to which are going to append single leaves.
+        let mut concurrent_mt_2 = ConcurrentMerkleTree::<H, HEIGHT, CHANGELOG, ROOTS>::default();
+        concurrent_mt_2.init().unwrap();
+
+        // Reference tree for checking the correctness of proofs.
+        let mut reference_mt =
+            light_merkle_tree_reference::MerkleTree::<H, HEIGHT, ROOTS>::new().unwrap();
+
+        // Store to which we are passing the changelog events from `concurrent_mt_1`.
+        // We will get proofs from it and validate against proofs from `reference_mt`.
+        let mut store = Store::<H>::new();
+
+        let leaves: Vec<[u8; 32]> = (0..batch_size)
+            .map(|_| {
+                Fr::rand(&mut rng)
+                    .into_bigint()
+                    .to_bytes_be()
+                    .try_into()
+                    .unwrap()
+            })
+            .collect();
+        let leaves: Vec<&[u8; 32]> = leaves.iter().collect();
+
+        // Append leaves to all Merkle tree implementations.
+
+        let changelog_entries_1 = concurrent_mt_1.append_batch(leaves.as_slice()).unwrap();
+
+        let changelog_entry_2 = leaves
+            .iter()
+            .map(|leaf| concurrent_mt_2.append(leaf).unwrap())
+            .last()
+            .unwrap();
+
+        for leaf in leaves {
+            reference_mt.append(leaf).unwrap();
+        }
+
+        // Get the indexed event from `concurrent_mt_1` - the batch append event.
+        let changelog_event =
+            ChangelogEventV1::new([0u8; 32], changelog_entries_1.clone(), seq).unwrap();
+
+        // Add nodes from the event to the store.
+        for path in changelog_event.paths.iter() {
+            for node in path {
+                store.add_node(node.node, node.index.try_into().unwrap());
+            }
+        }
+
+        // Check whether the proofs from store is compatible with the proofs from
+        // reference MT.
+        for (i, path) in changelog_event.paths.iter().enumerate() {
+            let leaf = path.first().unwrap();
+            let index: usize = leaf.index.try_into().unwrap();
+
+            let store_proof = store.get_proof_for_leaf(index);
+            let reference_proof = reference_mt.get_proof_of_leaf(i).to_vec();
+            assert_eq!(store_proof, reference_proof);
+        }
+
+        // Check wether the last Meorkle paths are the same.
+        let changelog_entry_1 = changelog_entries_1.last().unwrap();
+        assert_eq!(changelog_entry_1.path, changelog_entry_2.path);
+
+        // Check whether roots are the same.
+        assert_eq!(
+            concurrent_mt_1.root().unwrap(),
+            concurrent_mt_2.root().unwrap()
+        );
+
+        seq = seq.saturating_add(1);
+    }
+}
+
 #[test]
 fn test_append_keccak() {
     append::<Keccak>()
@@ -674,6 +767,45 @@ fn test_overfill_changelog_keccak() {
 #[test]
 fn test_without_changelog_keccak() {
     without_changelog::<Keccak>()
+}
+
+#[test]
+fn test_compat_batch_keccak_8() {
+    const HEIGHT: usize = 8;
+    compat_batch::<Keccak, HEIGHT>()
+}
+
+#[test]
+fn test_compat_batch_poseidon_6() {
+    const HEIGHT: usize = 6;
+    compat_batch::<Poseidon, HEIGHT>()
+}
+
+#[test]
+fn test_compat_batch_sha256_8() {
+    const HEIGHT: usize = 8;
+    compat_batch::<Sha256, HEIGHT>()
+}
+
+#[cfg(feature = "heavy-tests")]
+#[test]
+fn test_compat_batch_keccak_16() {
+    const HEIGHT: usize = 16;
+    compat_batch::<Keccak, HEIGHT>()
+}
+
+#[cfg(feature = "heavy-tests")]
+#[test]
+fn test_compat_batch_poseidon_16() {
+    const HEIGHT: usize = 16;
+    compat_batch::<Poseidon, HEIGHT>()
+}
+
+#[cfg(feature = "heavy-tests")]
+#[test]
+fn test_compat_batch_sha256_16() {
+    const HEIGHT: usize = 16;
+    compat_batch::<Sha256, HEIGHT>()
 }
 
 /// Compares the internal fields of concurrent Merkle tree implementations, to

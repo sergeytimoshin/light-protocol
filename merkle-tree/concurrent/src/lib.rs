@@ -1,7 +1,11 @@
-use std::{cmp::Ordering, marker::PhantomData};
+use std::{
+    cmp::{self, Ordering},
+    marker::PhantomData,
+};
 
 use bytemuck::{Pod, Zeroable};
 use hash::compute_root;
+pub use light_hasher;
 use light_hasher::Hasher;
 
 pub mod changelog;
@@ -346,103 +350,223 @@ where
         self.update_leaf_in_tree(new_leaf, leaf_index, &updated_proof)
     }
 
-    /// Appends a new leaf to the tree with the given `changelog_entry` to save
-    /// the Merkle path in.
-    fn append_with_changelog_entry(
+    /// Appends a new leaf to the tree.
+    pub fn append(
         &mut self,
         leaf: &[u8; 32],
-        changelog_entry: &mut ChangelogEntry<HEIGHT>,
+    ) -> Result<ChangelogEntry<HEIGHT>, ConcurrentMerkleTreeError> {
+        let changelog_entries = self.append_batch(&[leaf])?;
+        let changelog_entry = changelog_entries
+            .first()
+            .ok_or(ConcurrentMerkleTreeError::EmptyChangelogEntries)?
+            .to_owned();
+        Ok(changelog_entry)
+    }
+
+    /// Helper method which is used when computing Merkle paths. It updates the
+    /// following nodes:
+    ///
+    /// * `current_node` - a node which is the part of the Merkle path.
+    /// * `intersection_node` - the last node of Merkle path not affected by
+    ///   previous appends.
+    ///
+    /// Apart from the correspoding indexes (`current_node_index` and
+    /// `intersection_index`), it also needs `prev_leaf_index` - index of the
+    /// last inserted leaf, which is used to figure out whether `current_node`
+    /// is on the left or right.
+    fn update_nodes(
+        &mut self,
+        current_node_index: usize,
+        intersection_index: usize,
+        prev_leaf_index: usize,
+        current_node: &mut [u8; 32],
+        intersection_node: &mut [u8; 32],
     ) -> Result<(), ConcurrentMerkleTreeError> {
-        if self.next_index >= 1 << HEIGHT {
+        match current_node_index.cmp(&intersection_index) {
+            Ordering::Less => {
+                let empty_node = H::zero_bytes()[current_node_index];
+                *current_node = H::hashv(&[current_node, &empty_node])?;
+                *intersection_node = compute_parent_node::<H>(
+                    intersection_node,
+                    &self.rightmost_proof[current_node_index],
+                    prev_leaf_index,
+                    current_node_index,
+                )?;
+                self.rightmost_proof[current_node_index] = empty_node;
+            }
+            Ordering::Equal => {
+                *current_node = H::hashv(&[intersection_node, current_node])?;
+                self.rightmost_proof[intersection_index] = *intersection_node;
+            }
+            Ordering::Greater => {
+                *current_node = compute_parent_node::<H>(
+                    current_node,
+                    &self.rightmost_proof[current_node_index],
+                    prev_leaf_index,
+                    current_node_index,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Appends a batch of new leaves to the tree.
+    pub fn append_batch(
+        &mut self,
+        leaves: &[&[u8; 32]],
+    ) -> Result<Vec<ChangelogEntry<HEIGHT>>, ConcurrentMerkleTreeError> {
+        if (self.next_index as usize + leaves.len() - 1) >= 1 << HEIGHT {
             return Err(ConcurrentMerkleTreeError::TreeFull);
         }
 
-        let mut current_node = *leaf;
+        let mut changelog_entries = vec![ChangelogEntry::<HEIGHT>::default(); leaves.len()];
+
+        // To reduce number of hashes we have to compute, we can compute
+        // Merkle paths for non-terminal leaves just partially. It's enough to
+        // do it up to either `intersection_index` or next intersection index
+        // (whichever is greater). We are going to refer to it as "fillup
+        // index".
+        //
+        // However, after we are done with computing all non
+        let mut fillup_indexes = vec![0_usize; leaves.len() - 1];
+
+        for (leaf_i, leaf) in leaves[..leaves.len() - 1].iter().enumerate() {
+            let mut current_node = leaf.to_owned().to_owned();
+            let mut intersection_node = self.rightmost_leaf;
+
+            // The highest index of our currently computed Merkle path which is not
+            // affected by the Merkle path of the last append.
+            //
+            // For example, let's imagine this tree, where there are
+            // two non-zero leaves:
+            //
+            //          H2
+            //      /-/    \-\
+            //    H1          Z[1]
+            //  /    \      /      \
+            // L1    L2   Z[0]    Z[0]
+            //
+            // Let's assume that we are starting to append the 3rd leaf. The
+            // Merkle path of that append will consist of the following nodes
+            // marked by `M`. Nodes marked by `X` belong to one of the previous
+            // Merkle paths. Node marked by `Z` is a zero leaf which doesn't
+            // belong to any path.
+            //
+            //       M3
+            //    /-/  \-\
+            //   X        M2
+            //  / \      /  \
+            // X   X    M1   Z
+            //
+            // We can write the Merkle path as an array, from the leaf to the
+            // uppermost node:
+            //
+            // [M1, **M2**, M3]
+            //  (0) **(1)** (2)
+            //
+            // The only node which was affected by previous appends is M3, because
+            // it was part of the Merkle path of the previous append.
+            //
+            // Therefore, the intersection node is M2 and the intersection index is
+            // 1.
+            let intersection_index = self.next_index.trailing_zeros() as usize;
+
+            // The same, but for the next leaf. We are going to compute hashes
+            // for the given leaf's Merkle path only up to the next intersection
+            // index.
+            //
+            // Hashes up from the next intersection index would be overriden by
+            // the next append, so computing them is a waste of resources.
+            let next_intersection_index = (self.next_index + 1).trailing_zeros() as usize;
+
+            // To reduce number of hashes we have to compute, we can compute
+            // Merkle paths for non-terminal leaves just partially. It's enough to
+            // do it up to either `intersection_index` or `next_intersection_index`
+            // (whichever is greater). We are going to refer to it as `fillup_index`.
+            //
+            // Any node above fillup index would be completely overwritten by
+            // the next iterations, so computing them in this iteration is
+            // wasteful.
+            //
+            // The exception is the first iteration, where we always need to use
+            // the next intersection_index, because `intersection_index`.
+            let fillup_index = match leaf_i.cmp(&0) {
+                Ordering::Equal => next_intersection_index,
+                _ => cmp::max(intersection_index, next_intersection_index),
+            };
+            fillup_indexes[leaf_i] = fillup_index;
+
+            // Index of the previous life. Used to figure out whether the node
+            // we walk through is on the left or right.
+            let prev_leaf_index = if self.next_index > 1 {
+                self.next_index as usize - 1
+            } else {
+                0
+            };
+
+            let changelog_entry = changelog_entries
+                .get_mut(leaf_i)
+                .ok_or(ConcurrentMerkleTreeError::EmptyChangelogEntries)?;
+
+            for (i, item) in changelog_entry.path[..fillup_index + 1]
+                .iter_mut()
+                .enumerate()
+            {
+                *item = current_node;
+
+                self.update_nodes(
+                    i,
+                    intersection_index,
+                    prev_leaf_index,
+                    &mut current_node,
+                    &mut intersection_node,
+                )?;
+            }
+
+            changelog_entry.root = current_node;
+            changelog_entry.index = self.next_index;
+
+            self.sequence_number = self.sequence_number.saturating_add(1);
+            self.next_index = self.next_index.saturating_add(1);
+            self.rightmost_leaf = leaf.to_owned().to_owned();
+        }
+
+        let mut current_node = leaves
+            .last()
+            .ok_or(ConcurrentMerkleTreeError::EmptyLeaves)?
+            .to_owned()
+            .to_owned();
         let mut intersection_node = self.rightmost_leaf;
-        // The highest index of our currently computed Merkle path which is not
-        // affected by the Merkle path of the last append.
-        //
-        // For example, let's imagine this tree, where there are
-        // two non-zero leaves:
-        //
-        //          H2
-        //      /-/    \-\
-        //    H1          Z[1]
-        //  /    \      /      \
-        // L1    L2   Z[0]    Z[0]
-        //
-        // Let's assume that we are starting to append the 3rd leaf. The
-        // Merkle path of that append will consist of the following nodes
-        // marked by `M`. Nodes marked by `X` belong to one of the previous
-        // Merkle paths. Node marked by `Z` is a zero leaf which doesn't
-        // belong to any path.
-        //
-        //       M3
-        //    /-/  \-\
-        //   X        M2
-        //  / \      /  \
-        // X   X    M1   Z
-        //
-        // We can write the Merkle path as an array, from the leaf to the
-        // uppermost node:
-        //
-        // [M1, **M2**, M3]
-        //  (1) **(2)** (3)
-        //
-        // The only node which was affected by previous appends is M3, because
-        // it was part of the Merkle path of the previous append.
-        //
-        // Therefore, the intersection node is M2 and the intersection index is
-        // 2.
+
         let intersection_index = self.next_index.trailing_zeros() as usize;
-        let node_index = if self.next_index > 1 {
+
+        // Index of the previous life. Used to figure out whether the node
+        // we walk through is on the left or right.
+        let prev_leaf_index = if self.next_index > 1 {
             self.next_index as usize - 1
         } else {
             0
         };
-        let mut changelog_path = [[0u8; 32]; HEIGHT];
 
-        for (i, item) in changelog_path.iter_mut().enumerate() {
+        let changelog_entry = changelog_entries
+            .last_mut()
+            .ok_or(ConcurrentMerkleTreeError::EmptyChangelogEntries)?;
+
+        for (i, item) in changelog_entry.path.iter_mut().enumerate() {
             *item = current_node;
 
-            match i.cmp(&intersection_index) {
-                Ordering::Less => {
-                    let empty_node = H::zero_bytes()[i];
-                    current_node = H::hashv(&[&current_node, &empty_node])?;
-                    intersection_node = compute_parent_node::<H>(
-                        &intersection_node,
-                        &self.rightmost_proof[i],
-                        node_index,
-                        i,
-                    )?;
-                    self.rightmost_proof[i] = empty_node;
-                }
-                Ordering::Equal => {
-                    current_node = H::hashv(&[&intersection_node, &current_node])?;
-                    self.rightmost_proof[intersection_index] = intersection_node;
-                }
-                Ordering::Greater => {
-                    current_node = compute_parent_node::<H>(
-                        &current_node,
-                        &self.rightmost_proof[i],
-                        node_index,
-                        i,
-                    )?;
-                }
-            }
+            self.update_nodes(
+                i,
+                intersection_index,
+                prev_leaf_index,
+                &mut current_node,
+                &mut intersection_node,
+            )?;
         }
 
         changelog_entry.root = current_node;
-        changelog_entry.path = changelog_path;
         changelog_entry.index = self.next_index;
 
-        self.inc_current_changelog_index();
-        if let Some(changelog_element) = self
-            .changelog
-            .get_mut(self.current_changelog_index as usize)
-        {
-            *changelog_element = *changelog_entry;
-        }
         self.inc_current_root_index();
         *self
             .roots
@@ -451,31 +575,33 @@ where
 
         self.sequence_number = self.sequence_number.saturating_add(1);
         self.next_index = self.next_index.saturating_add(1);
-        self.rightmost_leaf = *leaf;
+        self.rightmost_leaf = leaves
+            .last()
+            .ok_or(ConcurrentMerkleTreeError::EmptyLeaves)?
+            .to_owned()
+            .to_owned();
 
-        Ok(())
-    }
+        // Fill up an non-terminal changelog entries with missing nodes.
+        for i in 0..(changelog_entries.len() - 1) {
+            let fillup_index = fillup_indexes[i];
 
-    /// Appends a new leaf to the tree.
-    pub fn append(
-        &mut self,
-        leaf: &[u8; 32],
-    ) -> Result<ChangelogEntry<HEIGHT>, ConcurrentMerkleTreeError> {
-        let mut changelog_entry = ChangelogEntry::default();
-        self.append_with_changelog_entry(leaf, &mut changelog_entry)?;
-        Ok(changelog_entry)
-    }
+            for j in (fillup_index + 1)..HEIGHT {
+                changelog_entries[i].path[j] = changelog_entries
+                    .last()
+                    .ok_or(ConcurrentMerkleTreeError::EmptyChangelogEntries)?
+                    .path[j];
+            }
+        }
 
-    /// Appends a new batch of leaves to the tree.
-    pub fn append_batch<const N: usize>(
-        &mut self,
-        leaves: &[&[u8; 32]; N],
-    ) -> Result<[Box<ChangelogEntry<HEIGHT>>; N], ConcurrentMerkleTreeError> {
-        let mut changelog_entries: [Box<ChangelogEntry<HEIGHT>>; N] =
-            std::array::from_fn(|_| Box::<ChangelogEntry<HEIGHT>>::default());
-
-        for (leaf, changelog_entry) in leaves.iter().zip(changelog_entries.iter_mut()) {
-            self.append_with_changelog_entry(leaf, changelog_entry)?;
+        // Finally, save all changelog entries on-chain.
+        for changelog_entry in changelog_entries.iter() {
+            self.inc_current_changelog_index();
+            if let Some(saved_changelog_entry) = self
+                .changelog
+                .get_mut(self.current_changelog_index as usize)
+            {
+                *saved_changelog_entry = *changelog_entry;
+            }
         }
 
         Ok(changelog_entries)

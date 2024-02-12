@@ -1,8 +1,10 @@
 use std::cell::{RefCell, RefMut};
 
 use ark_ff::{BigInteger, BigInteger256};
-use light_concurrent_merkle_tree::errors::ConcurrentMerkleTreeError;
-use light_hasher::{Hasher, Poseidon};
+use light_concurrent_merkle_tree::{
+    errors::ConcurrentMerkleTreeError,
+    light_hasher::{Hasher, Poseidon},
+};
 use light_indexed_merkle_tree::{
     array::{IndexingArray, IndexingElement},
     errors::IndexedMerkleTreeError,
