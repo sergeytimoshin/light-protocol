@@ -8,3 +8,5 @@ mod merkle22_3;
 pub use crate::verifying_keys::merkle22_3::VERIFYINGKEY as VK22_3;
 mod merkle22_4;
 pub use crate::verifying_keys::merkle22_4::VERIFYINGKEY as VK22_4;
+mod merkle22_5;
+pub use crate::verifying_keys::merkle22_5::VERIFYINGKEY as VK22_5;
