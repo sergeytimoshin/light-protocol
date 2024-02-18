@@ -25,7 +25,7 @@ describe("Tests", () => {
     }
 
     function witnessGenerator(tree_height: number, num_utxos: number): any {
-        const path =  `/Users/tsv/Developer/light-protocol/circuit-lib/circuitlib-rs/test-data/merkle${tree_height}_${num_utxos}/merkle${tree_height}_${num_utxos}_js/witness_calculator.js`;
+        const path =  `../../circuitlib-rs/test-data/merkle${tree_height}_${num_utxos}/merkle${tree_height}_${num_utxos}_js/witness_calculator.js`;
         const wtns = require(path);
         return wtns;
     }
@@ -74,7 +74,7 @@ describe("Tests", () => {
 
                 // write publicSignals to json file
                 const json = JSON.stringify(publicSignals);
-                writeFileSync(`./build/public_inputs_merkle${merkleHeights[i]}_${utxos[j]}.json`, json);
+                writeFileSync(`../circuitlib-rs/test-data/merkle${merkleHeights[i]}_${utxos[j]}/public_inputs_merkle${merkleHeights[i]}_${utxos[j]}.json`, json);
 
                 const vKey = await snarkjs.zKey.exportVerificationKey(
                     completePathZkey,

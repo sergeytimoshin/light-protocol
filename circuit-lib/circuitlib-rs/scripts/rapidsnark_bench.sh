@@ -8,12 +8,13 @@ LOG_FILE="execution_times.log"
 #> $LOG_FILE
 
 echo "Benchmarking started..." >> $LOG_FILE
-# Iterate from 1 to 10
-for ((i=1; i<=10; i++))
+
+for ((i=1; i<=3; i++))
 do
     echo "Running iteration $i"
+    work_dir="test-data/merkle22_$i"
     start_time=$(date +%s.%N)
-    prover circuit.zkey witness.wtns merkle22_$i.json public_inputs_merkle22_$i.json
+    prover "$work_dir/circuit.zkey" "$work_dir/22_$i.wtns" "$work_dir/proof_merkle22_$i.json" "$work_dir/public_inputs_merkle22_$i.json"
     end_time=$(date +%s.%N)
     execution_time=$(echo "$end_time - $start_time" | bc)
     echo "Iteration $i took $execution_time seconds" >> $LOG_FILE

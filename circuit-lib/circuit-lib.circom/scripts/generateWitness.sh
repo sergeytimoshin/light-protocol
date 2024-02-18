@@ -18,7 +18,7 @@ REPO_TOP_DIR=$(git rev-parse --show-toplevel)
 
 CIRCUIT_RS_DIR="$REPO_TOP_DIR/circuit-lib/circuitlib-rs"
 
-MAX_COUNT=10
+MAX_COUNT=3
 
 MERKLE_TREE_HEIGHT=22
 for ((i=1; i<=MAX_COUNT; i++)); do
