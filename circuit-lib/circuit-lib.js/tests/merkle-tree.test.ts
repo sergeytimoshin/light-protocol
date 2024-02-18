@@ -4,7 +4,7 @@ import {MerkleTree} from "./utils/merkle-tree";
 let circomlibjs = require("circomlibjs");
 var ffjavascript = require("ffjavascript");
 const {unstringifyBigInts, stringifyBigInts, leInt2Buff, leBuff2int} = ffjavascript.utils;
-import {readFileSync} from "fs";
+import {readFileSync, writeFileSync} from "fs";
 
 const snarkjs = require("snarkjs");
 import {BN} from "@coral-xyz/anchor";
@@ -38,7 +38,7 @@ describe("Tests", () => {
     it("merkle proofgen", async () => {
         const hasher = await WasmFactory.getInstance();
         const merkleHeights = [22]; //[22, 30, 40, 128];
-        const utxos = [1, 2, 3];
+        const utxos = [1, 2, 3, 4, 5, 6, 7, 8, 9];
         for (let i = 0; i < merkleHeights.length; i++) {
             for (let j = 0; j < utxos.length; j++) {
                 const completePathZkey = zk(merkleHeights[i], utxos[j]);
@@ -54,18 +54,27 @@ describe("Tests", () => {
                     leaf: new Array(utxos[j]).fill(leaf)
                 }
 
+                const inputs_json = JSON.stringify(inputs);
+                writeFileSync(`../circuitlib-rs/test-data/merkle${merkleHeights[i]}_${utxos[j]}/inputs${merkleHeights[i]}_${utxos[j]}.json`, inputs_json);
+
                 let generator = witnessGenerator(merkleHeights[i], utxos[j]);
                 let witnessCalculator = await generator(buffer);
 
                 console.time("witness generation");
                 let wtns = await witnessCalculator.calculateWTNSBin(inputs, 0,);
                 console.timeEnd("witness generation");
+
+
                 console.time("proof generation");
                 const {proof, publicSignals} = await snarkjs.groth16.prove(
                     completePathZkey,
                     wtns,
                 );
                 console.timeEnd("proof generation");
+
+                // write publicSignals to json file
+                const json = JSON.stringify(publicSignals);
+                writeFileSync(`./build/public_inputs_merkle${merkleHeights[i]}_${utxos[j]}.json`, json);
 
                 const vKey = await snarkjs.zKey.exportVerificationKey(
                     completePathZkey,
