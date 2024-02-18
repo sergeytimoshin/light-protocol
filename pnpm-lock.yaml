@@ -178,6 +178,9 @@ importers:
         specifier: ^0.2.62
         version: 0.2.62
     devDependencies:
+      '@coral-xyz/anchor':
+        specifier: 0.28.0
+        version: 0.28.0
       '@solana/web3.js':
         specifier: ^1.87.6
         version: 1.87.6
