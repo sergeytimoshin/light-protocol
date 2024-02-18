@@ -4,11 +4,6 @@ function execute_commands {
   merkle_number="$1"
   utxo_count="$2"
 
-  if [[ $# -ne 3 ]]; then
-    echo "Invalid number of arguments"
-    exit 1;
-  fi
-
   build_directory="$CIRCUIT_RS_DIR/test-data/merkle${merkle_number}_$utxo_count"
   build_js_directory=$build_directory/merkle${merkle_number}_${utxo_count}_js
 
