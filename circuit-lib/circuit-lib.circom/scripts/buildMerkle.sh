@@ -34,6 +34,7 @@ function execute_commands {
   npx snarkjs zkey export verificationkey "$build_directory/circuit.zkey" "$build_directory/merkle${merkle_number}_$utxo_count.json"
 
   build_js_directory=$build_directory/merkle${merkle_number}_${utxo_count}_js
+
   npx node "$build_js_directory/generate_witness.js" \
     "$build_js_directory/merkle${merkle_number}_${utxo_count}.wasm" \
     "$build_js_directory/../inputs${merkle_number}_${utxo_count}.json" \
