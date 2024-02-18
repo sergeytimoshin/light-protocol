@@ -49,7 +49,7 @@ echo "mod helpers;" >> "$CIRCUIT_RS_VERIFYINGKEY_DIR/mod.rs";
 echo "pub use crate::verifying_keys::helpers::vk;" >> "$CIRCUIT_RS_VERIFYINGKEY_DIR/mod.rs";
 
 POWERS_OF_TAU=16
-MAX_COUNT=3
+MAX_COUNT=10
 
 MERKLE_TREE_HEIGHT=22
 for ((i=1; i<=MAX_COUNT; i++)); do
